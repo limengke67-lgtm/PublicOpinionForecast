@@ -164,6 +164,9 @@ def test_report_reader_lease_blocks_graph_start_and_delete(monkeypatch):
     runner_calls = []
 
     class Tasks:
+        def list_tasks(self, _task_type):
+            return []
+
         def create_task(self, **_kwargs):
             return "task-1"
 

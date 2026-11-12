@@ -1,0 +1,42 @@
+{
+  "dataset": "PHEME rumours and non-rumours",
+  "source": "https://figshare.com/articles/dataset/PHEME_dataset_of_rumours_and_non-rumours/4010619",
+  "doi": "10.6084/m9.figshare.4010619.v1",
+  "archive_md5": "07f004eca867447d69c71e87be242d75",
+  "archive_sha256": "4c3cc2acacb2124c0d9d9858a9a33692ab29a068abbb6c72d870f9511e373dac",
+  "license": "CC BY 4.0 (Figshare metadata)",
+  "derivation": "仅保留匿名 UTC 小时计数；不分发帖子正文、用户信息或单条帖子 ID。",
+  "sampling_limit": "对话样本覆盖范围内的计数；空桶仅表示本归档没有记录，不能当作全平台真实零值。",
+  "events": {
+    "charliehebdo": {
+      "unique_records": 38268,
+      "duplicates_removed": 0,
+      "records_in_first_72h": 37350,
+      "start": "2015-01-07T11:00:00+00:00"
+    },
+    "ferguson": {
+      "unique_records": 23403,
+      "duplicates_removed": 772,
+      "records_in_first_72h": 3585,
+      "start": "2014-08-09T22:00:00+00:00"
+    },
+    "germanwings-crash": {
+      "unique_records": 4489,
+      "duplicates_removed": 0,
+      "records_in_first_72h": 4095,
+      "start": "2015-03-24T10:00:00+00:00"
+    },
+    "ottawashooting": {
+      "unique_records": 12284,
+      "duplicates_removed": 0,
+      "records_in_first_72h": 12275,
+      "start": "2014-10-22T13:00:00+00:00"
+    },
+    "sydneysiege": {
+      "unique_records": 23996,
+      "duplicates_removed": 0,
+      "records_in_first_72h": 23912,
+      "start": "2014-12-14T23:00:00+00:00"
+    }
+  }
+}

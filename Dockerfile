@@ -1,29 +1,22 @@
-FROM python:3.11
+FROM node:22-bookworm-slim AS frontend-build
+WORKDIR /build/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY frontend/ ./
+COPY locales/ /build/locales/
+RUN npm run build
 
-# 安装 Node.js （满足 >=18）及必要工具
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends nodejs npm \
-  && rm -rf /var/lib/apt/lists/*
-
-# 从 uv 官方镜像复制 uv
+FROM python:3.11-slim-bookworm AS runtime
 COPY --from=ghcr.io/astral-sh/uv:0.9.26 /uv /uvx /bin/
-
-WORKDIR /app
-
-# 先复制依赖描述文件以利用缓存
-COPY package.json package-lock.json ./
-COPY frontend/package.json frontend/package-lock.json ./frontend/
-COPY backend/pyproject.toml backend/uv.lock ./backend/
-
-# 安装依赖（Node + Python）
-RUN npm ci \
-  && npm ci --prefix frontend \
-  && cd backend && uv sync --frozen
-
-# 复制项目源码
-COPY . .
-
-EXPOSE 3000 5001
-
-# 同时启动前后端（开发模式）
-CMD ["npm", "run", "dev"]
+WORKDIR /app/backend
+ENV PYTHONUTF8=1 PYTHONIOENCODING=utf-8 UV_LINK_MODE=copy
+COPY backend/pyproject.toml backend/uv.lock ./
+RUN uv sync --frozen --no-editable --no-install-project
+COPY backend/ ./
+COPY locales/ /app/locales/
+RUN uv sync --frozen --no-editable
+COPY --from=frontend-build /build/frontend/dist /app/frontend/dist
+ENV POF_SERVE_FRONTEND=1 FLASK_HOST=0.0.0.0 FLASK_PORT=5001 MIROFISH_RESEARCH_ONLY=1
+EXPOSE 5001
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s CMD ["/app/backend/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5001/health', timeout=3)"]
+CMD ["/app/backend/.venv/bin/python", "-X", "utf8", "run.py"]

@@ -17,6 +17,8 @@ from datetime import datetime
 
 from openai import OpenAI
 from ..config import Config
+from ..utils.llm_runtime import reuse_preparation, tracked, BudgetExceeded
+from contextvars import copy_context
 from ..utils.logger import get_logger
 from ..utils.locale import get_language_instruction, get_locale, set_locale, t
 from ..utils.openai_chat_compat import create_chat_completion, extract_chat_completion_text
@@ -271,6 +273,7 @@ class OasisProfileGenerator:
             except Exception as e:
                 logger.warning(f"Zep客户端初始化失败: {e}")
     
+    @tracked('profile')
     def generate_profile_from_entity(
         self, 
         entity: EntityNode, 
@@ -537,6 +540,7 @@ class OasisProfileGenerator:
         """判断是否是群体/机构类型实体"""
         return entity_type.lower() in self.GROUP_ENTITY_TYPES
     
+    @reuse_preparation
     def _generate_profile_with_llm(
         self,
         entity_name: str,
@@ -613,6 +617,8 @@ class OasisProfileGenerator:
                     
                     last_error = je
                     
+            except BudgetExceeded:
+                raise
             except Exception as e:
                 logger.warning(f"LLM调用失败 (attempt {attempt+1}): {str(e)[:80]}")
                 last_error = e
@@ -620,9 +626,11 @@ class OasisProfileGenerator:
                 time.sleep(1 * (attempt + 1))  # 指数退避
         
         logger.warning(f"LLM生成人设失败（{max_attempts}次尝试）: {last_error}, 使用规则生成")
-        return self._generate_profile_rule_based(
+        fallback = self._generate_profile_rule_based(
             entity_name, entity_type, entity_summary, entity_attributes
         )
+        fallback['_cacheable'] = False
+        return fallback
     
     def _fix_truncated_json(self, content: str) -> str:
         """修复被截断的JSON（输出被max_tokens限制截断）"""
@@ -980,6 +988,8 @@ class OasisProfileGenerator:
                 
                 return idx, profile, None
                 
+            except BudgetExceeded:
+                raise
             except Exception as e:
                 logger.error(f"生成实体 {entity.name} 的人设失败: {str(e)}")
                 # 创建一个基础profile
@@ -1003,7 +1013,7 @@ class OasisProfileGenerator:
         with concurrent.futures.ThreadPoolExecutor(max_workers=parallel_count) as executor:
             # 提交所有任务
             future_to_entity = {
-                executor.submit(generate_single_profile, idx, entity): (idx, entity)
+                executor.submit(copy_context().run, generate_single_profile, idx, entity): (idx, entity)
                 for idx, entity in enumerate(entities)
             }
             
@@ -1035,6 +1045,8 @@ class OasisProfileGenerator:
                     else:
                         logger.info(f"[{current}/{total}] 成功生成人设: {entity.name} ({entity_type})")
                         
+                except BudgetExceeded:
+                    raise
                 except Exception as e:
                     logger.error(f"处理实体 {entity.name} 时发生异常: {str(e)}")
                     with lock:

@@ -22,6 +22,7 @@ from ..config import Config
 from ..utils.llm_client import LLMClient
 from ..utils.logger import get_logger
 from ..utils.locale import get_language_instruction, t
+from ..utils.llm_runtime import tracked, BudgetExceeded
 from .zep_tools import (
     ZepToolsService, 
     SearchResult, 
@@ -451,6 +452,7 @@ class Report:
     created_at: str = ""
     completed_at: str = ""
     error: Optional[str] = None
+    runtime_scope_id: Optional[str] = None
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -463,7 +465,8 @@ class Report:
             "markdown_content": self.markdown_content,
             "created_at": self.created_at,
             "completed_at": self.completed_at,
-            "error": self.error
+            "error": self.error,
+            "runtime_scope_id": self.runtime_scope_id
         }
 
 
@@ -1063,6 +1066,8 @@ class ReportAgent:
             else:
                 return f"未知工具: {tool_name}。请使用以下工具之一: insight_forge, panorama_search, quick_search"
                 
+        except BudgetExceeded:
+            raise
         except Exception as e:
             logger.error(t('report.toolExecFailed', toolName=tool_name, error=str(e)))
             return f"工具执行失败: {str(e)}"
@@ -1244,6 +1249,8 @@ class ReportAgent:
             logger.info(t('report.outlinePlanDone', count=len(sections)))
             return outline
             
+        except BudgetExceeded:
+            raise
         except Exception as e:
             logger.error(t('report.outlinePlanFailed', error=str(e)))
             # 返回默认大纲（3个章节，作为fallback）
@@ -1573,6 +1580,7 @@ class ReportAgent:
         
         return final_answer
     
+    @tracked('report', 'simulation_id')
     def generate_report(
         self, 
         progress_callback: Optional[Callable[[str, int, str], None]] = None,
@@ -1614,6 +1622,9 @@ class ReportAgent:
             status=ReportStatus.PENDING,
             created_at=datetime.now().isoformat()
         )
+        from .simulation_runner import SimulationRunner
+        run_state = SimulationRunner.get_run_state(self.simulation_id)
+        report.runtime_scope_id = getattr(run_state, 'runtime_scope_id', None)
         
         # 已完成的章节标题列表（用于进度追踪）
         completed_section_titles = []
@@ -1749,6 +1760,8 @@ class ReportAgent:
             
             # 使用ReportManager组装完整报告
             report.markdown_content = ReportManager.assemble_full_report(report_id, outline)
+            from ..research.evidence_report import simulation_appendix
+            report.markdown_content += simulation_appendix(Config.UPLOAD_FOLDER, self.simulation_id)
             report.status = ReportStatus.COMPLETED
             report.completed_at = datetime.now().isoformat()
             
@@ -1807,6 +1820,7 @@ class ReportAgent:
             
             return report
     
+    @tracked('report_chat', 'simulation_id')
     def chat(
         self, 
         message: str,
@@ -2475,10 +2489,6 @@ class ReportManager:
         """保存报告元信息和完整报告"""
         cls._ensure_report_folder(report.report_id)
         
-        # 保存元信息JSON
-        with open(cls._get_report_path(report.report_id), 'w', encoding='utf-8') as f:
-            json.dump(report.to_dict(), f, ensure_ascii=False, indent=2)
-        
         # 保存大纲
         if report.outline:
             cls.save_outline(report.report_id, report.outline)
@@ -2487,6 +2497,10 @@ class ReportManager:
         if report.markdown_content:
             with open(cls._get_report_markdown_path(report.report_id), 'w', encoding='utf-8') as f:
                 f.write(report.markdown_content)
+
+        # Publish terminal metadata after the complete text has been written.
+        from ..research.store import write_json
+        write_json(cls._get_report_path(report.report_id), report.to_dict())
         
         logger.info(t('report.reportSaved', reportId=report.report_id))
     
@@ -2540,29 +2554,15 @@ class ReportManager:
             markdown_content=markdown_content,
             created_at=data.get('created_at', ''),
             completed_at=data.get('completed_at', ''),
-            error=data.get('error')
+            error=data.get('error'),
+            runtime_scope_id=data.get('runtime_scope_id')
         )
     
     @classmethod
     def get_report_by_simulation(cls, simulation_id: str) -> Optional[Report]:
         """根据模拟ID获取报告"""
-        cls._ensure_reports_dir()
-        
-        for item in os.listdir(cls.REPORTS_DIR):
-            item_path = os.path.join(cls.REPORTS_DIR, item)
-            # 新格式：文件夹
-            if os.path.isdir(item_path):
-                report = cls.get_report(item)
-                if report and report.simulation_id == simulation_id:
-                    return report
-            # 兼容旧格式：JSON文件
-            elif item.endswith('.json'):
-                report_id = item[:-5]
-                report = cls.get_report(report_id)
-                if report and report.simulation_id == simulation_id:
-                    return report
-        
-        return None
+        reports = cls.list_reports(simulation_id=simulation_id, limit=1)
+        return reports[0] if reports else None
     
     @classmethod
     def list_reports(cls, simulation_id: Optional[str] = None, limit: int = 50) -> List[Report]:

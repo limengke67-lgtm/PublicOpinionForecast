@@ -20,6 +20,8 @@ def create_app(config_class=Config):
     """Flask应用工厂函数"""
     app = Flask(__name__)
     app.config.from_object(config_class)
+    from .utils.llm_runtime import install_openai_instrumentation
+    install_openai_instrumentation()
     
     # 设置JSON编码：确保中文直接显示（而不是 \uXXXX 格式）
     # Flask >= 2.3 使用 app.json.ensure_ascii，旧版本使用 JSON_AS_ASCII 配置
@@ -51,6 +53,8 @@ def create_app(config_class=Config):
     # 请求日志中间件
     @app.before_request
     def log_request():
+        if os.environ.get('MIROFISH_RESEARCH_ONLY') == '1' and request.path.startswith('/api/') and not request.path.startswith('/api/research/'):
+            return {'success': False, 'error': '当前为离线验证模式，模型和云图谱操作已关闭'}, 403
         logger = get_logger('mirofish.request')
         logger.debug(f"请求: {request.method} {request.path}")
         if request.content_type and 'json' in request.content_type:
@@ -63,15 +67,21 @@ def create_app(config_class=Config):
         return response
     
     # 注册蓝图
-    from .api import graph_bp, simulation_bp, report_bp
+    from .api import graph_bp, simulation_bp, report_bp, research_bp
     app.register_blueprint(graph_bp, url_prefix='/api/graph')
     app.register_blueprint(simulation_bp, url_prefix='/api/simulation')
     app.register_blueprint(report_bp, url_prefix='/api/report')
+    app.register_blueprint(research_bp, url_prefix='/api/research')
     
     # 健康检查
     @app.route('/health')
     def health():
-        return {'status': 'ok', 'service': 'MiroFish Backend'}
+        return {'status': 'ok', 'service': 'MiroFish Backend', 'research_only': os.environ.get('MIROFISH_RESEARCH_ONLY') == '1'}
+
+    if os.environ.get('POF_SERVE_FRONTEND') == '1':
+        from .frontend import register_frontend
+        from pathlib import Path
+        register_frontend(app, os.environ.get('POF_FRONTEND_DIR') or Path(__file__).resolve().parents[2] / 'frontend' / 'dist')
     
     if should_log_startup:
         logger.info("MiroFish Backend 启动完成")

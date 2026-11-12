@@ -4,12 +4,15 @@
     <nav class="navbar">
       <div class="nav-brand">MIROFISH</div>
       <div class="nav-links">
+        <RouterLink to="/research" class="github-link">预测验证 · 成本工作台 ↗</RouterLink>
+        <RouterLink to="/research/rolling" class="github-link">滚动预测 · 自动纠偏 ↗</RouterLink>
         <LanguageSwitcher />
         <a href="https://github.com/666ghj/MiroFish" target="_blank" class="github-link">
           {{ $t('nav.visitGithub') }} <span class="arrow">↗</span>
         </a>
       </div>
     </nav>
+    <div v-if="researchOnly" class="research-mode-notice">当前为离线研究模式：可以验证预测、查看费用记录和运行滚动纠偏。<RouterLink to="/research/rolling">打开闭环工作台 ↗</RouterLink></div>
 
     <div class="main-content">
       <!-- 上半部分：Hero 区域 -->
@@ -206,18 +209,25 @@
       </section>
 
       <!-- 历史项目数据库 -->
-      <HistoryDatabase />
+      <HistoryDatabase v-if="modeLoaded && !researchOnly" />
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { getRuntimeSettings } from '../api/research'
 import { useRouter } from 'vue-router'
 import HistoryDatabase from '../components/HistoryDatabase.vue'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
 
 const router = useRouter()
+const researchOnly = ref(true), modeLoaded = ref(false)
+onMounted(async () => {
+  try { researchOnly.value = (await getRuntimeSettings()).data.research_only }
+  catch { researchOnly.value = true }
+  finally { modeLoaded.value = true }
+})
 
 // 表单数据
 const formData = ref({
@@ -237,7 +247,7 @@ const fileInput = ref(null)
 
 // 计算属性:是否可以提交
 const canSubmit = computed(() => {
-  return formData.value.simulationRequirement.trim() !== '' && files.value.length > 0
+  return !researchOnly.value && formData.value.simulationRequirement.trim() !== '' && files.value.length > 0
 })
 
 // 触发文件选择
@@ -312,6 +322,7 @@ const startSimulation = () => {
 </script>
 
 <style scoped>
+.research-mode-notice{padding:16px 40px;background:#fff4e7;color:#7d5b34;font-size:13px;line-height:1.8}.research-mode-notice a{margin-left:10px;color:#b95020}
 /* 全局变量与重置 */
 :root {
   --black: #000000;
@@ -356,9 +367,12 @@ const startSimulation = () => {
 
 .nav-links {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 16px;
 }
+@media(max-width:720px){.navbar{height:auto;min-height:60px;padding:15px 20px;gap:15px;align-items:flex-start;flex-direction:column}.nav-links{justify-content:flex-start;gap:12px}.research-mode-notice{padding:15px 20px}}
 
 .github-link {
   color: var(--white);

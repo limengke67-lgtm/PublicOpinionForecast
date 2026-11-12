@@ -35,6 +35,7 @@ _backend_dir = os.path.abspath(os.path.join(_scripts_dir, '..'))
 _project_root = os.path.abspath(os.path.join(_backend_dir, '..'))
 sys.path.insert(0, _scripts_dir)
 sys.path.insert(0, _backend_dir)
+from runtime_support import platform_rng, llm_concurrency, check_budget, simulation_clock
 
 # 加载项目根目录的 .env 文件（包含 LLM_API_KEY 等配置）
 from dotenv import load_dotenv
@@ -231,6 +232,7 @@ class IPCHandler:
             # 执行Interview
             actions = {agent: interview_action}
             await self.env.step(actions)
+            check_budget(after_round=True)
             
             # 从数据库获取结果
             result = self._get_interview_result(agent_id)
@@ -412,6 +414,7 @@ class RedditSimulationRunner:
         """
         self.config_path = config_path
         self.config = self._load_config()
+        self.rng = platform_rng(self.config, 'reddit')
         self.simulation_dir = os.path.dirname(config_path)
         self.wait_for_commands = wait_for_commands
         self.env = None
@@ -491,7 +494,7 @@ class RedditSimulationRunner:
         else:
             multiplier = 1.0
         
-        target_count = int(random.uniform(base_min, base_max) * multiplier)
+        target_count = int(self.rng.uniform(base_min, base_max) * multiplier)
         
         candidates = []
         for cfg in agent_configs:
@@ -502,10 +505,10 @@ class RedditSimulationRunner:
             if current_hour not in active_hours:
                 continue
             
-            if random.random() < activity_level:
+            if self.rng.random() < activity_level:
                 candidates.append(agent_id)
         
-        selected_ids = random.sample(
+        selected_ids = self.rng.sample(
             candidates, 
             min(target_count, len(candidates))
         ) if candidates else []
@@ -578,7 +581,7 @@ class RedditSimulationRunner:
             agent_graph=self.agent_graph,
             platform=oasis.DefaultPlatformType.REDDIT,
             database_path=db_path,
-            semaphore=30,  # 限制最大并发 LLM 请求数，防止 API 过载
+            semaphore=llm_concurrency(self.config),
         )
         
         await self.env.reset()
@@ -624,9 +627,8 @@ class RedditSimulationRunner:
         start_time = datetime.now()
         
         for round_num in range(total_rounds):
-            simulated_minutes = round_num * minutes_per_round
-            simulated_hour = (simulated_minutes // 60) % 24
-            simulated_day = simulated_minutes // (60 * 24) + 1
+            check_budget()
+            simulated_minutes, simulated_hour, simulated_day = simulation_clock(self.config, round_num, minutes_per_round)
             
             active_agents = self._get_active_agents_for_round(
                 self.env, simulated_hour, round_num

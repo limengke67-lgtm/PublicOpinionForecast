@@ -88,6 +88,7 @@ _backend_dir = os.path.abspath(os.path.join(_scripts_dir, '..'))
 _project_root = os.path.abspath(os.path.join(_backend_dir, '..'))
 sys.path.insert(0, _scripts_dir)
 sys.path.insert(0, _backend_dir)
+from runtime_support import platform_rng, llm_concurrency, check_budget, simulation_clock
 
 # 加载项目根目录的 .env 文件（包含 LLM_API_KEY 等配置）
 from dotenv import load_dotenv
@@ -1041,7 +1042,8 @@ def get_active_agents_for_round(
     env,
     config: Dict[str, Any],
     current_hour: int,
-    round_num: int
+    round_num: int,
+    rng=None
 ) -> List:
     """根据时间和配置决定本轮激活哪些Agent"""
     time_config = config.get("time_config", {})
@@ -1060,7 +1062,8 @@ def get_active_agents_for_round(
     else:
         multiplier = 1.0
     
-    target_count = int(random.uniform(base_min, base_max) * multiplier)
+    rng = rng or random
+    target_count = int(rng.uniform(base_min, base_max) * multiplier)
     
     candidates = []
     for cfg in agent_configs:
@@ -1071,10 +1074,10 @@ def get_active_agents_for_round(
         if current_hour not in active_hours:
             continue
         
-        if random.random() < activity_level:
+        if rng.random() < activity_level:
             candidates.append(agent_id)
     
-    selected_ids = random.sample(
+    selected_ids = rng.sample(
         candidates, 
         min(target_count, len(candidates))
     ) if candidates else []
@@ -1127,6 +1130,7 @@ async def run_twitter_simulation(
     log_info("初始化...")
     
     # Twitter 使用通用 LLM 配置
+    rng = platform_rng(config, 'twitter')
     model = create_model(config, use_boost=False)
     
     # OASIS Twitter使用CSV格式
@@ -1156,7 +1160,7 @@ async def run_twitter_simulation(
         agent_graph=result.agent_graph,
         platform=oasis.DefaultPlatformType.TWITTER,
         database_path=db_path,
-        semaphore=30,  # 限制最大并发 LLM 请求数，防止 API 过载
+        semaphore=llm_concurrency(config),
     )
     
     await result.env.reset()
@@ -1226,18 +1230,17 @@ async def run_twitter_simulation(
     start_time = datetime.now()
     
     for round_num in range(total_rounds):
+        check_budget()
         # 检查是否收到退出信号
         if _shutdown_event and _shutdown_event.is_set():
             if main_logger:
                 main_logger.info(f"收到退出信号，在第 {round_num + 1} 轮停止模拟")
             break
         
-        simulated_minutes = round_num * minutes_per_round
-        simulated_hour = (simulated_minutes // 60) % 24
-        simulated_day = simulated_minutes // (60 * 24) + 1
+        simulated_minutes, simulated_hour, simulated_day = simulation_clock(config, round_num, minutes_per_round)
         
         active_agents = get_active_agents_for_round(
-            result.env, config, simulated_hour, round_num
+            result.env, config, simulated_hour, round_num, rng
         )
         
         # 无论是否有活跃agent，都记录round开始
@@ -1252,6 +1255,7 @@ async def run_twitter_simulation(
         
         actions = {agent: LLMAction() for _, agent in active_agents}
         await result.env.step(actions)
+        check_budget(after_round=True)
         
         # 从数据库获取实际执行的动作并记录
         actual_actions, last_rowid = fetch_new_actions_from_db(
@@ -1319,6 +1323,7 @@ async def run_reddit_simulation(
     log_info("初始化...")
     
     # Reddit 使用加速 LLM 配置（如果有的话，否则回退到通用配置）
+    rng = platform_rng(config, 'reddit')
     model = create_model(config, use_boost=True)
     
     profile_path = os.path.join(simulation_dir, "reddit_profiles.json")
@@ -1347,7 +1352,7 @@ async def run_reddit_simulation(
         agent_graph=result.agent_graph,
         platform=oasis.DefaultPlatformType.REDDIT,
         database_path=db_path,
-        semaphore=30,  # 限制最大并发 LLM 请求数，防止 API 过载
+        semaphore=llm_concurrency(config),
     )
     
     await result.env.reset()
@@ -1425,18 +1430,17 @@ async def run_reddit_simulation(
     start_time = datetime.now()
     
     for round_num in range(total_rounds):
+        check_budget()
         # 检查是否收到退出信号
         if _shutdown_event and _shutdown_event.is_set():
             if main_logger:
                 main_logger.info(f"收到退出信号，在第 {round_num + 1} 轮停止模拟")
             break
         
-        simulated_minutes = round_num * minutes_per_round
-        simulated_hour = (simulated_minutes // 60) % 24
-        simulated_day = simulated_minutes // (60 * 24) + 1
+        simulated_minutes, simulated_hour, simulated_day = simulation_clock(config, round_num, minutes_per_round)
         
         active_agents = get_active_agents_for_round(
-            result.env, config, simulated_hour, round_num
+            result.env, config, simulated_hour, round_num, rng
         )
         
         # 无论是否有活跃agent，都记录round开始
@@ -1451,6 +1455,7 @@ async def run_reddit_simulation(
         
         actions = {agent: LLMAction() for _, agent in active_agents}
         await result.env.step(actions)
+        check_budget(after_round=True)
         
         # 从数据库获取实际执行的动作并记录
         actual_actions, last_rowid = fetch_new_actions_from_db(

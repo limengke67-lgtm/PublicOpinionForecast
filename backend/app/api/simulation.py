@@ -5,6 +5,7 @@ Step2: Zep实体读取与过滤、OASIS模拟准备与运行（全程自动化�
 
 import os
 import traceback
+import threading
 from contextlib import nullcontext
 from flask import request, jsonify, send_file
 
@@ -25,6 +26,7 @@ from ..utils.zep_lifecycle import get_graph_readers, graph_lifecycle_lock
 from ..models.project import ProjectManager
 
 logger = get_logger('mirofish.api.simulation')
+_prepare_request_lock = threading.RLock()
 
 
 def _get_default_platform(simulation_id: str) -> str:
@@ -388,6 +390,12 @@ def _check_simulation_prepared(simulation_id: str) -> tuple:
 
 @simulation_bp.route('/prepare', methods=['POST'])
 def prepare_simulation():
+    # Serialize the quick check-and-create portion, not the background jobs.
+    with _prepare_request_lock:
+        return _prepare_simulation_impl()
+
+
+def _prepare_simulation_impl():
     """
     准备模拟环境（异步任务，LLM智能生成所有参数）
     
@@ -454,6 +462,14 @@ def prepare_simulation():
         # 检查是否强制重新生成
         force_regenerate = data.get('force_regenerate', False)
         logger.info(f"开始处理 /prepare 请求: simulation_id={simulation_id}, force_regenerate={force_regenerate}")
+        for task in TaskManager().list_tasks('simulation_prepare'):
+            if task['metadata'].get('simulation_id') == simulation_id and task['status'] in {'pending', 'processing'}:
+                return jsonify(success=True, data={
+                    'simulation_id': simulation_id, 'task_id': task['task_id'],
+                    'status': 'preparing', 'already_prepared': False, 'reused_task': True,
+                    'expected_entities_count': state.entities_count,
+                    'entity_types': state.entity_types,
+                })
         
         # 检查是否已经准备完成（避免重复生成）
         if not force_regenerate:
@@ -1596,6 +1612,16 @@ def start_simulation():
             }), 404
 
         force_restarted = False
+        config_path = os.path.join(Config.OASIS_SIMULATION_DATA_DIR, simulation_id, 'simulation_config.json')
+        if os.path.exists(config_path):
+            import json
+            from ..research.simulation_contract import validate_start
+            with open(config_path, encoding='utf-8') as stream:
+                prepared_config = json.load(stream)
+            try:
+                validate_start(prepared_config, max_rounds)
+            except ValueError as error:
+                return jsonify(success=False, error=str(error)), 400
         
         # 智能处理状态：如果准备工作已完成，允许重新启动
         if state.status != SimulationStatus.READY:
@@ -1623,6 +1649,8 @@ def start_simulation():
                         or updater is not None
                     )
                 )
+                old_process = SimulationRunner._processes.get(simulation_id)
+                needs_finalization = needs_finalization or bool(old_process and old_process.poll() is None)
                 if needs_finalization:
                     if not force:
                         return jsonify({

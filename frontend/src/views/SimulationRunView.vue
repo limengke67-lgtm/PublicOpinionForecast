@@ -1,4 +1,5 @@
 <template>
+  <RouterLink :to="{ name: 'Research', query: { simulationId: currentSimulationId } }" class="research-entry">验证本次预测 / 查看 API 用量 ↗</RouterLink>
   <div class="main-view">
     <!-- Header -->
     <header class="app-header">
@@ -316,6 +317,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.research-entry { display: block; padding: 10px 24px; background: #fff5ef; color: #bd481b; font-size: 12px; text-decoration: none; }
 .main-view {
   height: 100vh;
   display: flex;

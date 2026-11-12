@@ -54,6 +54,8 @@ def create_chat_completion(
         else:
             kwargs["max_tokens"] = max_tokens
 
+    from .llm_runtime import install_openai_instrumentation
+    install_openai_instrumentation()
     return client.chat.completions.create(**kwargs)
 
 

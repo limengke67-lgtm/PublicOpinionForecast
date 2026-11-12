@@ -1,0 +1,33 @@
+{
+  "kind": "offline_mock_scheduling_benchmark",
+  "real_api_calls": 0,
+  "not_real_model_latency": true,
+  "created_at": "2026-11-11T15:51:35.619205+00:00",
+  "profile_repeated_preparation": {
+    "baseline": {
+      "elapsed_ms": 316.74,
+      "requests": 4
+    },
+    "efficient": {
+      "elapsed_ms": 112.26,
+      "requests": 1
+    }
+  },
+  "independent_configuration_jobs": {
+    "outputs_equal": true,
+    "runs": {
+      "baseline": {
+        "elapsed_ms": 412.49,
+        "maximum_concurrency": 1
+      },
+      "efficient": {
+        "elapsed_ms": 169.31,
+        "maximum_concurrency": 4
+      }
+    }
+  },
+  "limitations": [
+    "固定等待时间和确定性返回值，只验证缓存与并行调度机制。",
+    "不能据此推断真实 API 节省比例、舆情准确率或端到端提速。"
+  ]
+}

@@ -1,0 +1,433 @@
+{
+  "kind": "real_dataset_local_numeric_replay",
+  "source": {
+    "dataset": "PHEME rumours and non-rumours",
+    "source": "https://figshare.com/articles/dataset/PHEME_dataset_of_rumours_and_non-rumours/4010619",
+    "doi": "10.6084/m9.figshare.4010619.v1",
+    "archive_md5": "07f004eca867447d69c71e87be242d75",
+    "archive_sha256": "4c3cc2acacb2124c0d9d9858a9a33692ab29a068abbb6c72d870f9511e373dac",
+    "license": "CC BY 4.0 (Figshare metadata)",
+    "derivation": "仅保留匿名 UTC 小时计数；不分发帖子正文、用户信息或单条帖子 ID。",
+    "sampling_limit": "对话样本覆盖范围内的计数；空桶仅表示本归档没有记录，不能当作全平台真实零值。",
+    "events": {
+      "charliehebdo": {
+        "unique_records": 38268,
+        "duplicates_removed": 0,
+        "records_in_first_72h": 37350,
+        "start": "2015-01-07T11:00:00+00:00"
+      },
+      "ferguson": {
+        "unique_records": 23403,
+        "duplicates_removed": 772,
+        "records_in_first_72h": 3585,
+        "start": "2014-08-09T22:00:00+00:00"
+      },
+      "germanwings-crash": {
+        "unique_records": 4489,
+        "duplicates_removed": 0,
+        "records_in_first_72h": 4095,
+        "start": "2015-03-24T10:00:00+00:00"
+      },
+      "ottawashooting": {
+        "unique_records": 12284,
+        "duplicates_removed": 0,
+        "records_in_first_72h": 12275,
+        "start": "2014-10-22T13:00:00+00:00"
+      },
+      "sydneysiege": {
+        "unique_records": 23996,
+        "duplicates_removed": 0,
+        "records_in_first_72h": 23912,
+        "start": "2014-12-14T23:00:00+00:00"
+      }
+    }
+  },
+  "real_api_calls": 0,
+  "policy": {
+    "window": 6,
+    "min_points": 3,
+    "consecutive": 2,
+    "trigger_ratio": 0.35,
+    "shrinkage": 3.0,
+    "decay": 0.85,
+    "minimum_improvement": 0.05,
+    "max_gain": 4.0
+  },
+  "algorithm_version": "bounded-residual-expert-v1",
+  "implementation_sha256": {
+    "calibration.py": "937a7bbbce6406ac46ab66124050921d45ee9961145c192129020c6867ae3b80",
+    "rolling.py": "d7aa6351b440087df2505e58371142a128fc26ce2b28e013f1709b49d135e261",
+    "evaluation.py": "e478d490dbbc6d87ea7f1e69151684c2dc7e6971ce55fe3b6506430492faaa5d"
+  },
+  "protocol": "每事件前 12 小时观测，后 48 小时逐桶释放；固定默认策略，不在结果上调参；初始参考为近 3 桶均值。",
+  "not_a_mirofish_llm_accuracy_benchmark": true,
+  "events": [
+    {
+      "event": "charliehebdo",
+      "summary": {
+        "scored_buckets": 48,
+        "unscored_buckets": 0,
+        "prospective_buckets": 0,
+        "calibrated_versions": 29,
+        "metrics": {
+          "predicted": {
+            "mae": 204.75694444444443,
+            "rmse": 339.5764552814012,
+            "wape": 0.4410093032995303,
+            "smape": 0.5154439958689417,
+            "correlation": 0.7357556201660929,
+            "peak_time_error_hours": 1.0,
+            "peak_volume_error": 570.3333333333333
+          },
+          "base": {
+            "mae": 368.4166666666667,
+            "rmse": 553.6475764318751,
+            "wape": 0.7935026474019564,
+            "smape": 0.9434646296506997,
+            "correlation": null,
+            "peak_time_error_hours": null,
+            "peak_volume_error": 1927.3333333333333
+          },
+          "candidate": {
+            "mae": 299.30009537837435,
+            "rmse": 390.3851305353426,
+            "wape": 0.644638094685541,
+            "smape": 0.7553365288957562,
+            "correlation": 0.5938227747086748,
+            "peak_time_error_hours": 1.0,
+            "peak_volume_error": 960.1943204158156
+          },
+          "last_value": {
+            "mae": 183.625,
+            "rmse": 352.44000671509093,
+            "wape": 0.39549492955218524,
+            "smape": 0.4067025816055497,
+            "correlation": 0.7291555818340886,
+            "peak_time_error_hours": 1.0,
+            "peak_volume_error": 0.0
+          },
+          "moving_average": {
+            "mae": 252.51388888888889,
+            "rmse": 378.45655115364445,
+            "wape": 0.5438690956953544,
+            "smape": 0.6065359005988364,
+            "correlation": 0.6554325972387147,
+            "peak_time_error_hours": 1.0,
+            "peak_volume_error": 570.3333333333333
+          }
+        },
+        "mae_improvement_vs_base": 0.4442245344190606,
+        "by_lead": {
+          "1": {
+            "count": 48,
+            "mae": 204.75694444444443
+          }
+        },
+        "refresh_recommended": false,
+        "additional_calibration_api_requests": 0,
+        "note": "按每个桶实际接收前已发出的最新版本评分；所有滚动基线使用相同观测。多步与一步预测请分层比较。"
+      },
+      "selected_methods": {
+        "base": 20,
+        "moving_average": 3,
+        "last_value": 26
+      },
+      "elapsed_seconds": 3.614
+    },
+    {
+      "event": "ferguson",
+      "summary": {
+        "scored_buckets": 48,
+        "unscored_buckets": 0,
+        "prospective_buckets": 0,
+        "calibrated_versions": 34,
+        "metrics": {
+          "predicted": {
+            "mae": 19.909999312981576,
+            "rmse": 31.346591172357428,
+            "wape": 0.462127643628199,
+            "smape": 0.7981981545866161,
+            "correlation": 0.8399571251866982,
+            "peak_time_error_hours": 1.0,
+            "peak_volume_error": 0.0
+          },
+          "base": {
+            "mae": 38.51388888888887,
+            "rmse": 61.02811282970789,
+            "wape": 0.8939393939393936,
+            "smape": 1.1452197178634256,
+            "correlation": null,
+            "peak_time_error_hours": null,
+            "peak_volume_error": 194.66666666666666
+          },
+          "candidate": {
+            "mae": 22.5627480066489,
+            "rmse": 34.78789218686946,
+            "wape": 0.5237001471562607,
+            "smape": 0.8236599861626727,
+            "correlation": 0.7946008395270083,
+            "peak_time_error_hours": 3.0,
+            "peak_volume_error": 87.40785743960518
+          },
+          "last_value": {
+            "mae": 18.9375,
+            "rmse": 30.802123844523017,
+            "wape": 0.4395551257253385,
+            "smape": 0.7185559724919464,
+            "correlation": 0.8446148213372,
+            "peak_time_error_hours": 1.0,
+            "peak_volume_error": 0.0
+          },
+          "moving_average": {
+            "mae": 20.895833333333332,
+            "rmse": 32.42359251921126,
+            "wape": 0.4850096711798839,
+            "smape": 0.8307952265445634,
+            "correlation": 0.8184789044163007,
+            "peak_time_error_hours": 3.0,
+            "peak_volume_error": 22.333333333333343
+          }
+        },
+        "mae_improvement_vs_base": 0.483043652890489,
+        "by_lead": {
+          "1": {
+            "count": 48,
+            "mae": 19.909999312981576
+          }
+        },
+        "refresh_recommended": false,
+        "additional_calibration_api_requests": 0,
+        "note": "按每个桶实际接收前已发出的最新版本评分；所有滚动基线使用相同观测。多步与一步预测请分层比较。"
+      },
+      "selected_methods": {
+        "base": 15,
+        "last_value": 24,
+        "moving_average": 4,
+        "candidate": 6
+      },
+      "elapsed_seconds": 3.655
+    },
+    {
+      "event": "germanwings-crash",
+      "summary": {
+        "scored_buckets": 48,
+        "unscored_buckets": 0,
+        "prospective_buckets": 0,
+        "calibrated_versions": 23,
+        "metrics": {
+          "predicted": {
+            "mae": 11.568408684228558,
+            "rmse": 27.313670589006783,
+            "wape": 0.9707755539212776,
+            "smape": 0.9498926709433873,
+            "correlation": -0.010985124077898305,
+            "peak_time_error_hours": 26.0,
+            "peak_volume_error": 132.66666666666666
+          },
+          "base": {
+            "mae": 14.222222222222221,
+            "rmse": 26.59338890275802,
+            "wape": 1.1934731934731935,
+            "smape": 1.0913759526799285,
+            "correlation": null,
+            "peak_time_error_hours": null,
+            "peak_volume_error": 132.66666666666666
+          },
+          "candidate": {
+            "mae": 13.845281765139632,
+            "rmse": 29.098625864558347,
+            "wape": 1.1618418264452837,
+            "smape": 0.9891129131453179,
+            "correlation": -0.07298429407097336,
+            "peak_time_error_hours": 1.0,
+            "peak_volume_error": 102.13431398084356
+          },
+          "last_value": {
+            "mae": 15.395833333333334,
+            "rmse": 37.06722496581942,
+            "wape": 1.2919580419580419,
+            "smape": 0.8892545596548704,
+            "correlation": 0.01852076714258605,
+            "peak_time_error_hours": 1.0,
+            "peak_volume_error": 0.0
+          },
+          "moving_average": {
+            "mae": 14.881944444444441,
+            "rmse": 31.37818155626259,
+            "wape": 1.2488344988344986,
+            "smape": 0.9613646466892207,
+            "correlation": -0.05865675599836014,
+            "peak_time_error_hours": 3.0,
+            "peak_volume_error": 90.66666666666666
+          }
+        },
+        "mae_improvement_vs_base": 0.1865962643901795,
+        "by_lead": {
+          "1": {
+            "count": 48,
+            "mae": 11.568408684228558
+          }
+        },
+        "refresh_recommended": false,
+        "additional_calibration_api_requests": 0,
+        "note": "按每个桶实际接收前已发出的最新版本评分；所有滚动基线使用相同观测。多步与一步预测请分层比较。"
+      },
+      "selected_methods": {
+        "base": 26,
+        "candidate": 5,
+        "last_value": 14,
+        "moving_average": 4
+      },
+      "elapsed_seconds": 3.959
+    },
+    {
+      "event": "ottawashooting",
+      "summary": {
+        "scored_buckets": 48,
+        "unscored_buckets": 0,
+        "prospective_buckets": 0,
+        "calibrated_versions": 46,
+        "metrics": {
+          "predicted": {
+            "mae": 35.819444444444436,
+            "rmse": 117.03859366639455,
+            "wape": 2.0764895330112716,
+            "smape": 0.6731152275848553,
+            "correlation": 0.8671807553418225,
+            "peak_time_error_hours": 0.0,
+            "peak_volume_error": 428.0
+          },
+          "base": {
+            "mae": 542.75,
+            "rmse": 543.2744472179784,
+            "wape": 31.463768115942027,
+            "smape": 1.8863999174676915,
+            "correlation": null,
+            "peak_time_error_hours": null,
+            "peak_volume_error": 428.0
+          },
+          "candidate": {
+            "mae": 87.88619079911221,
+            "rmse": 105.8859261002108,
+            "wape": 5.094851640528244,
+            "smape": 1.5448248332745773,
+            "correlation": 0.9036021728622707,
+            "peak_time_error_hours": 0.0,
+            "peak_volume_error": 428.0
+          },
+          "last_value": {
+            "mae": 9.791666666666666,
+            "rmse": 16.736935203316047,
+            "wape": 0.5676328502415459,
+            "smape": 0.6676136594286488,
+            "correlation": 0.890259324909478,
+            "peak_time_error_hours": 0.0,
+            "peak_volume_error": 50.0
+          },
+          "moving_average": {
+            "mae": 23.097222222222218,
+            "rmse": 74.43447279816479,
+            "wape": 1.3389694041867952,
+            "smape": 0.660807474232407,
+            "correlation": 0.8731543473461845,
+            "peak_time_error_hours": 0.0,
+            "peak_volume_error": 428.0
+          }
+        },
+        "mae_improvement_vs_base": 0.9340037872972005,
+        "by_lead": {
+          "1": {
+            "count": 48,
+            "mae": 35.819444444444436
+          }
+        },
+        "refresh_recommended": false,
+        "additional_calibration_api_requests": 0,
+        "note": "按每个桶实际接收前已发出的最新版本评分；所有滚动基线使用相同观测。多步与一步预测请分层比较。"
+      },
+      "selected_methods": {
+        "base": 3,
+        "last_value": 19,
+        "moving_average": 27
+      },
+      "elapsed_seconds": 3.607
+    },
+    {
+      "event": "sydneysiege",
+      "summary": {
+        "scored_buckets": 48,
+        "unscored_buckets": 0,
+        "prospective_buckets": 0,
+        "calibrated_versions": 40,
+        "metrics": {
+          "predicted": {
+            "mae": 108.05555555555559,
+            "rmse": 284.7907939107167,
+            "wape": 0.5958261535515988,
+            "smape": 0.5916467233836913,
+            "correlation": 0.7817378612248974,
+            "peak_time_error_hours": 4.0,
+            "peak_volume_error": 971.0
+          },
+          "base": {
+            "mae": 996.0625,
+            "rmse": 1038.3999610779397,
+            "wape": 5.4923607122343485,
+            "smape": 1.6701322987748555,
+            "correlation": null,
+            "peak_time_error_hours": null,
+            "peak_volume_error": 971.0
+          },
+          "candidate": {
+            "mae": 216.54064105564535,
+            "rmse": 299.0913259202096,
+            "wape": 1.1940207663033862,
+            "smape": 1.3947110607929243,
+            "correlation": 0.8046625657575496,
+            "peak_time_error_hours": 1.0,
+            "peak_volume_error": 727.6842568275426
+          },
+          "last_value": {
+            "mae": 88.10416666666667,
+            "rmse": 265.52091097815,
+            "wape": 0.48581275129236073,
+            "smape": 0.5865469048172732,
+            "correlation": 0.8003053776359795,
+            "peak_time_error_hours": 1.0,
+            "peak_volume_error": 0.0
+          },
+          "moving_average": {
+            "mae": 100.41666666666667,
+            "rmse": 267.3679926964306,
+            "wape": 0.5537047673750718,
+            "smape": 0.575446481600502,
+            "correlation": 0.7960413210885188,
+            "peak_time_error_hours": 1.0,
+            "peak_volume_error": 760.3333333333333
+          }
+        },
+        "mae_improvement_vs_base": 0.8915172937887376,
+        "by_lead": {
+          "1": {
+            "count": 48,
+            "mae": 108.05555555555559
+          }
+        },
+        "refresh_recommended": false,
+        "additional_calibration_api_requests": 0,
+        "note": "按每个桶实际接收前已发出的最新版本评分；所有滚动基线使用相同观测。多步与一步预测请分层比较。"
+      },
+      "selected_methods": {
+        "base": 9,
+        "last_value": 18,
+        "moving_average": 22
+      },
+      "elapsed_seconds": 3.817
+    }
+  ],
+  "limitations": [
+    "验证数据管道和本地自适应数值层，未运行真实 LLM 多智能体推演。",
+    "这是历史对话样本，不能代表当前事件、中文平台或全平台传播量。",
+    "同信息最近值、均值和影子残差方案均单独报告；算法可能不优于简单基线。"
+  ]
+}

@@ -380,7 +380,7 @@ const resetAllState = () => {
 }
 
 // 启动模拟
-const doStartSimulation = async () => {
+const doStartSimulation = async (force = false) => {
   if (!props.simulationId) {
     addLog(t('log.errorMissingSimId'))
     return
@@ -398,7 +398,7 @@ const doStartSimulation = async () => {
     const params = {
       simulation_id: props.simulationId,
       platform: 'parallel',
-      force: true,  // 强制重新开始
+      force: force === true,
       enable_graph_memory_update: true  // 开启动态图谱更新
     }
     
@@ -434,6 +434,37 @@ const doStartSimulation = async () => {
     emit('update-status', 'error')
   } finally {
     isStarting.value = false
+  }
+}
+
+const resumeOrStart = async () => {
+  try {
+    const response = await getRunStatus(props.simulationId)
+    const state = response.data || {}
+    if (['starting', 'running', 'paused', 'stopping'].includes(state.runner_status)) {
+      runStatus.value = state
+      phase.value = 1
+      startStatusPolling()
+      startDetailPolling()
+      emit('update-status', 'processing')
+      return
+    }
+    if (['completed', 'stopped'].includes(state.runner_status)) {
+      runStatus.value = state
+      phase.value = 2
+      await fetchRunStatusDetail()
+      emit('update-status', 'completed')
+      return
+    }
+    if (state.runner_status === 'failed') {
+      startError.value = state.error || '上次运行失败，请检查日志后手动重试。'
+      emit('update-status', 'error')
+      return
+    }
+    await doStartSimulation()
+  } catch (error) {
+    startError.value = error.message
+    emit('update-status', 'error')
   }
 }
 
@@ -659,7 +690,7 @@ const handleNextStep = async () => {
   try {
     const res = await generateReport({
       simulation_id: props.simulationId,
-      force_regenerate: true
+      force_regenerate: false
     })
     
     if (res.success && res.data) {
@@ -691,7 +722,7 @@ watch(() => props.systemLogs?.length, () => {
 onMounted(() => {
   addLog(t('log.step3Init'))
   if (props.simulationId) {
-    doStartSimulation()
+    resumeOrStart()
   }
 })
 

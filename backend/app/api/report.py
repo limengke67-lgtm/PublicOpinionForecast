@@ -211,6 +211,12 @@ def generate_report():
             # Cached-report reuse is now part of the same atomic barrier, so a
             # concurrent rerun cannot make the returned report stale between
             # the status check and response.
+            for task in TaskManager().list_tasks('report_generate'):
+                if task['metadata'].get('simulation_id') == simulation_id and task['status'] in {'pending', 'processing'}:
+                    return jsonify(success=True, data={
+                        'simulation_id': simulation_id, 'report_id': task['metadata']['report_id'],
+                        'task_id': task['task_id'], 'status': 'generating', 'reused_task': True,
+                    })
             if not force_regenerate:
                 existing_report = ReportManager.get_report_by_simulation(
                     simulation_id
@@ -218,6 +224,8 @@ def generate_report():
                 if (
                     existing_report
                     and existing_report.status == ReportStatus.COMPLETED
+                    and getattr(refreshed_run_state, 'runtime_scope_id', None) is not None
+                    and getattr(existing_report, 'runtime_scope_id', None) == refreshed_run_state.runtime_scope_id
                 ):
                     return jsonify({
                         "success": True,

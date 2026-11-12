@@ -12,6 +12,7 @@ import threading
 import subprocess
 import signal
 import atexit
+import uuid
 from typing import Dict, Any, List, Optional, Union
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -151,6 +152,7 @@ class SimulationRunState:
     
     # 进程ID（用于停止）
     process_pid: Optional[int] = None
+    runtime_scope_id: Optional[str] = None
     
     def add_action(self, action: AgentAction):
         """添加动作到最近动作列表"""
@@ -191,6 +193,7 @@ class SimulationRunState:
             "completed_at": self.completed_at,
             "error": self.error,
             "process_pid": self.process_pid,
+            "runtime_scope_id": self.runtime_scope_id,
         }
     
     def to_detail_dict(self) -> Dict[str, Any]:
@@ -331,6 +334,7 @@ class SimulationRunner:
                 completed_at=data.get("completed_at"),
                 error=data.get("error"),
                 process_pid=data.get("process_pid"),
+                runtime_scope_id=data.get("runtime_scope_id"),
             )
             
             # 加载最近动作
@@ -362,8 +366,8 @@ class SimulationRunner:
         
         data = state.to_detail_dict()
         
-        with open(state_file, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        from ..research.store import write_json
+        write_json(state_file, data)
         
         cls._run_states[state.simulation_id] = state
     
@@ -398,6 +402,8 @@ class SimulationRunner:
         
         with open(config_path, 'r', encoding='utf-8') as f:
             config = json.load(f)
+        from ..research.simulation_contract import validate_start
+        validate_start(config, max_rounds)
         
         # 初始化运行状态
         time_config = config.get("time_config", {})
@@ -418,6 +424,7 @@ class SimulationRunner:
             total_rounds=total_rounds,
             total_simulation_hours=total_hours,
             started_at=datetime.now().isoformat(),
+            runtime_scope_id=f"run_{uuid.uuid4().hex[:16]}",
         )
         
         # Atomically claim this simulation ID. The expensive updater/process
@@ -431,11 +438,28 @@ class SimulationRunner:
                 RunnerStatus.PAUSED,
                 RunnerStatus.STOPPING,
             }
-            if (
+            process_alive = simulation_id in cls._processes and cls._processes[simulation_id].poll() is None
+            if process_alive or (
                 existing and existing.runner_status in active_statuses
             ) or ZepGraphMemoryManager.get_updater(simulation_id) is not None:
                 raise ValueError(f"模拟已在运行或结束处理中: {simulation_id}")
+            # Capture options under the same lock used by the research settings API.
+            with open(config_path, 'r', encoding='utf-8') as stream:
+                config = json.load(stream)
             cls._save_run_state(state)
+
+        from ..research.provenance import bind_run_provenance
+        from ..research.store import write_json
+        try:
+            config['research_provenance'] = bind_run_provenance(config, sim_dir, cls.RUN_STATE_DIR)
+            config['runtime_scope_id'] = state.runtime_scope_id
+            write_json(config_path, config)
+        except Exception as error:
+            state.runner_status = RunnerStatus.FAILED
+            state.error = f'运行输入快照保存失败: {error}'
+            cls._save_run_state(state)
+            cls._sync_simulation_status(simulation_id, RunnerStatus.FAILED, state.error)
+            raise
         
         # 如果启用图谱记忆更新，创建更新器
         if enable_graph_memory_update:
@@ -533,6 +557,9 @@ class SimulationRunner:
             env = os.environ.copy()
             env['PYTHONUTF8'] = '1'  # Python 3.7+ 支持，让所有 open() 默认使用 UTF-8
             env['PYTHONIOENCODING'] = 'utf-8'  # 确保 stdout/stderr 使用 UTF-8
+            env['MIROFISH_SCOPE_ID'] = state.runtime_scope_id
+            env['MIROFISH_STAGE'] = 'simulation'
+            env['MIROFISH_MODE'] = config.get('runtime_options', {}).get('mode', 'efficient')
             
             # 设置工作目录为模拟目录（数据库等文件会生成在此）
             # 使用 start_new_session=True 创建新的进程组，确保可以通过 os.killpg 终止所有子进程
@@ -650,6 +677,8 @@ class SimulationRunner:
                     reddit_position = cls._read_action_log(
                         reddit_actions_log, reddit_position, state, "reddit"
                     )
+
+                cls._publish_round_completion(state)
                 
                 # 更新状态
                 cls._save_run_state(state)
@@ -879,6 +908,31 @@ class SimulationRunner:
             return position
     
     @classmethod
+    def _publish_round_completion(cls, state):
+        """Finish graph ingestion while retaining the OASIS process for interviews."""
+        if state.runner_status != RunnerStatus.RUNNING or not cls._check_all_platforms_completed(state):
+            return
+        with cls._finalization_lock(state.simulation_id):
+            if state.runner_status != RunnerStatus.RUNNING:
+                return
+            if cls._graph_memory_enabled.get(state.simulation_id, False):
+                state.runner_status = RunnerStatus.STOPPING
+                cls._save_run_state(state)
+                try:
+                    ZepGraphMemoryManager.stop_updater(state.simulation_id)
+                    cls._graph_memory_enabled.pop(state.simulation_id, None)
+                except Exception as error:
+                    state.runner_status = RunnerStatus.FAILED
+                    state.error = f'Zep图谱写入未完整完成: {error}'
+                    cls._save_run_state(state)
+                    cls._sync_simulation_status(state.simulation_id, state.runner_status, state.error)
+                    return
+            state.runner_status = RunnerStatus.COMPLETED
+            state.completed_at = datetime.now().isoformat()
+            cls._save_run_state(state)
+            cls._sync_simulation_status(state.simulation_id, RunnerStatus.COMPLETED)
+
+    @classmethod
     def _check_all_platforms_completed(cls, state: SimulationRunState) -> bool:
         """
         检查所有启用的平台是否都已完成模拟
@@ -976,6 +1030,7 @@ class SimulationRunner:
                 pending_updater is not None
                 and state.runner_status in {
                     RunnerStatus.STOPPING,
+                    RunnerStatus.COMPLETED,
                     RunnerStatus.FAILED,
                 }
             )
@@ -985,6 +1040,7 @@ class SimulationRunner:
                     RunnerStatus.RUNNING,
                     RunnerStatus.PAUSED,
                     RunnerStatus.STOPPING,
+                    RunnerStatus.COMPLETED,
                 ]
                 and not retrying_finalization
             ):

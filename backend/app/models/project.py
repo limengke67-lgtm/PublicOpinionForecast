@@ -53,6 +53,9 @@ class Project:
     
     # 错误信息
     error: Optional[str] = None
+    research_case_id: Optional[str] = None
+    research_input_hash: Optional[str] = None
+    research_used_graph_ids: List[str] = field(default_factory=list)
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
@@ -73,7 +76,10 @@ class Project:
             "simulation_requirement": self.simulation_requirement,
             "chunk_size": self.chunk_size,
             "chunk_overlap": self.chunk_overlap,
-            "error": self.error
+            "error": self.error,
+            "research_case_id": self.research_case_id,
+            "research_input_hash": self.research_input_hash,
+            "research_used_graph_ids": self.research_used_graph_ids
         }
     
     @classmethod
@@ -100,7 +106,10 @@ class Project:
             simulation_requirement=data.get('simulation_requirement'),
             chunk_size=data.get('chunk_size', 500),
             chunk_overlap=data.get('chunk_overlap', 50),
-            error=data.get('error')
+            error=data.get('error'),
+            research_case_id=data.get('research_case_id'),
+            research_input_hash=data.get('research_input_hash'),
+            research_used_graph_ids=data.get('research_used_graph_ids', [])
         )
 
 
@@ -176,8 +185,8 @@ class ProjectManager:
         project.updated_at = datetime.now().isoformat()
         meta_path = cls._get_project_meta_path(project.project_id)
         
-        with open(meta_path, 'w', encoding='utf-8') as f:
-            json.dump(project.to_dict(), f, ensure_ascii=False, indent=2)
+        from ..research.store import write_json
+        write_json(meta_path, project.to_dict())
     
     @classmethod
     def get_project(cls, project_id: str) -> Optional[Project]:

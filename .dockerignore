@@ -4,10 +4,21 @@
 .cursor
 .DS_Store
 .env
+.env.*
+**/.env
+**/.env.*
+backups
 
 node_modules
 frontend/node_modules
 backend/.venv
+backend/.tools
+backend/.python
+backend/.uv-cache
+.playwright-cli
+output
+backend/logs
+*.log
 .venv
 .python-version
 

@@ -12,6 +12,8 @@
 
 import json
 import math
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
@@ -22,6 +24,8 @@ from ..config import Config
 from ..utils.logger import get_logger
 from ..utils.locale import get_language_instruction, t
 from ..utils.openai_chat_compat import create_chat_completion, extract_chat_completion_text
+from ..utils.llm_runtime import tracked, settings, context as runtime_context, BudgetExceeded
+from ..utils.locale import get_locale, set_locale
 from .zep_entity_reader import EntityNode, ZepEntityReader
 
 logger = get_logger('mirofish.simulation_config')
@@ -241,6 +245,7 @@ class SimulationConfigGenerator:
             base_url=self.base_url
         )
     
+    @tracked('configuration', 'simulation_id')
     def generate_config(
         self,
         simulation_id: str,
@@ -296,13 +301,33 @@ class SimulationConfigGenerator:
         # ========== 步骤1: 生成时间配置 ==========
         report_progress(1, t('progress.generatingTimeConfig'))
         num_entities = len(entities)
-        time_config_result = self._generate_time_config(context, num_entities)
+        workers = settings()['prepare_workers'] if runtime_context()['mode'] == 'efficient' else 1
+        current_locale = get_locale()
+
+        def run_job(function, *args, **kwargs):
+            set_locale(current_locale)
+            return function(*args, **kwargs)
+
+        # These prompts are independent: none reads another job's generated output.
+        # Collect in the original order so IDs and progress remain stable.
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            def submit(function, *args, **kwargs):
+                return executor.submit(copy_context().run, run_job, function, *args, **kwargs)
+
+            time_job = submit(self._generate_time_config, context, num_entities)
+            event_job = submit(self._generate_event_config, context, simulation_requirement, entities)
+            agent_jobs = [submit(self._generate_agent_configs_batch, context=context,
+                                 entities=entities[index:index + self.AGENTS_PER_BATCH], start_idx=index,
+                                 simulation_requirement=simulation_requirement)
+                          for index in range(0, len(entities), self.AGENTS_PER_BATCH)]
+            time_config_result = time_job.result()
+            event_config_result = event_job.result()
+            agent_results = [job.result() for job in agent_jobs]
         time_config = self._parse_time_config(time_config_result, num_entities)
         reasoning_parts.append(f"{t('progress.timeConfigLabel')}: {time_config_result.get('reasoning', t('common.success'))}")
         
         # ========== 步骤2: 生成事件配置 ==========
         report_progress(2, t('progress.generatingEventConfig'))
-        event_config_result = self._generate_event_config(context, simulation_requirement, entities)
         event_config = self._parse_event_config(event_config_result)
         reasoning_parts.append(f"{t('progress.eventConfigLabel')}: {event_config_result.get('reasoning', t('common.success'))}")
         
@@ -318,12 +343,7 @@ class SimulationConfigGenerator:
                 t('progress.generatingAgentConfig', start=start_idx + 1, end=end_idx, total=len(entities))
             )
             
-            batch_configs = self._generate_agent_configs_batch(
-                context=context,
-                entities=batch_entities,
-                start_idx=start_idx,
-                simulation_requirement=simulation_requirement
-            )
+            batch_configs = agent_results[batch_idx]
             all_agent_configs.extend(batch_configs)
         
         reasoning_parts.append(t('progress.agentConfigResult', count=len(all_agent_configs)))
@@ -474,6 +494,8 @@ class SimulationConfigGenerator:
                     
                     last_error = e
                     
+            except BudgetExceeded:
+                raise
             except Exception as e:
                 logger.warning(f"LLM调用失败 (attempt {attempt+1}): {str(e)[:80]}")
                 last_error = e
@@ -592,6 +614,8 @@ class SimulationConfigGenerator:
 
         try:
             return self._call_llm_with_retry(prompt, system_prompt)
+        except BudgetExceeded:
+            raise
         except Exception as e:
             logger.warning(f"时间配置LLM生成失败: {e}, 使用默认配置")
             return self._get_default_time_config(num_entities)
@@ -709,6 +733,8 @@ class SimulationConfigGenerator:
 
         try:
             return self._call_llm_with_retry(prompt, system_prompt)
+        except BudgetExceeded:
+            raise
         except Exception as e:
             logger.warning(f"事件配置LLM生成失败: {e}, 使用默认配置")
             return {
@@ -874,6 +900,8 @@ class SimulationConfigGenerator:
         try:
             result = self._call_llm_with_retry(prompt, system_prompt)
             llm_configs = {cfg["agent_id"]: cfg for cfg in result.get("agent_configs", [])}
+        except BudgetExceeded:
+            raise
         except Exception as e:
             logger.warning(f"Agent配置批次LLM生成失败: {e}, 使用规则生成")
             llm_configs = {}

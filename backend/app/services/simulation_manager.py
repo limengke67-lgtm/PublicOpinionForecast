@@ -18,6 +18,7 @@ from .zep_entity_reader import ZepEntityReader, FilteredEntities
 from .oasis_profile_generator import OasisProfileGenerator, OasisAgentProfile
 from .simulation_config_generator import SimulationConfigGenerator, SimulationParameters
 from ..utils.locale import t
+from ..utils.llm_runtime import tracked, context
 
 logger = get_logger('mirofish.simulation')
 
@@ -162,8 +163,8 @@ class SimulationManager:
         
         state.updated_at = datetime.now().isoformat()
         
-        with open(state_file, 'w', encoding='utf-8') as f:
-            json.dump(state.to_dict(), f, ensure_ascii=False, indent=2)
+        from ..research.store import write_json
+        write_json(state_file, state.to_dict())
         
         self._simulations[state.simulation_id] = state
     
@@ -241,6 +242,7 @@ class SimulationManager:
         
         return state
     
+    @tracked('prepare', 'simulation_id')
     def prepare_simulation(
         self,
         simulation_id: str,
@@ -441,8 +443,20 @@ class SimulationManager:
             
             # 保存配置文件
             config_path = os.path.join(sim_dir, "simulation_config.json")
+            config_data = sim_params.to_dict()
+            from ..models.project import ProjectManager
+            project = ProjectManager.get_project(state.project_id)
+            if project and getattr(project, 'research_case_id', None):
+                from ..research.store import ResearchStore
+                from ..research.simulation_contract import bind_window
+                bind_window(config_data, ResearchStore(Config.UPLOAD_FOLDER).case(project.research_case_id))
+            config_data['runtime_options'] = {
+                'mode': context()['mode'],
+                'random_seed': 42,
+                'llm_concurrency': 30,
+            }
             with open(config_path, 'w', encoding='utf-8') as f:
-                f.write(sim_params.to_json())
+                json.dump(config_data, f, ensure_ascii=False, indent=2)
             
             state.config_generated = True
             state.config_reasoning = sim_params.generation_reasoning

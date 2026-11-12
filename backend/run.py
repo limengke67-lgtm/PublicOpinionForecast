@@ -24,8 +24,13 @@ from app.config import Config
 
 def main():
     """主函数"""
+    # Reassert the explicit CLI mode after dotenv loading; .env cannot disable it.
+    if '--research-only' in sys.argv:
+        os.environ['MIROFISH_RESEARCH_ONLY'] = '1'
+    if '--serve-frontend' in sys.argv:
+        os.environ['POF_SERVE_FRONTEND'] = '1'
     # 验证配置
-    errors = Config.validate()
+    errors = [] if os.environ.get('MIROFISH_RESEARCH_ONLY') == '1' else Config.validate()
     if errors:
         print("配置错误:")
         for err in errors:
@@ -37,7 +42,7 @@ def main():
     app = create_app()
     
     # 获取运行配置
-    host = os.environ.get('FLASK_HOST', '0.0.0.0')
+    host = os.environ.get('FLASK_HOST', '127.0.0.1' if os.environ.get('MIROFISH_RESEARCH_ONLY') == '1' else '0.0.0.0')
     port = int(os.environ.get('FLASK_PORT', 5001))
     debug = Config.DEBUG
     

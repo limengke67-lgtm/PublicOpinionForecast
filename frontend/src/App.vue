@@ -1,8 +1,10 @@
 <template>
+  <EventContext />
   <router-view />
 </template>
 
 <script setup>
+import EventContext from './components/EventContext.vue'
 // 使用 Vue Router 来管理页面
 </script>
 

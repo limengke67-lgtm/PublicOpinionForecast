@@ -14,6 +14,13 @@ else:
     load_dotenv(override=True)
 
 
+def credential_present(value):
+    if not isinstance(value, str) or not value.strip():
+        return False
+    text = value.strip().lower()
+    return not (text.startswith(('your_', 'replace_', 'placeholder')) or text in {'changeme', 'sk-xxx'})
+
+
 class Config:
     """Flask配置类"""
     
@@ -64,9 +71,9 @@ class Config:
     def validate(cls) -> list[str]:
         """验证必要配置"""
         errors: list[str] = []
-        if not cls.LLM_API_KEY:
+        if not credential_present(cls.LLM_API_KEY):
             errors.append("LLM_API_KEY 未配置")
-        if not cls.ZEP_API_KEY:
+        if not credential_present(cls.ZEP_API_KEY):
             errors.append("ZEP_API_KEY 未配置")
         if os.environ.get("ZEP_API_URL"):
             errors.append("ZEP_API_URL 不受支持；MiroFish 仅连接 Zep Cloud")

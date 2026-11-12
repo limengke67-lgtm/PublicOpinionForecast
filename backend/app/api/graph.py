@@ -352,6 +352,16 @@ def generate_ontology():
             }), 400
         
         # 保存提取的文本
+        research_case_id = request.form.get('research_case_id')
+        if research_case_id:
+            from ..research.store import ResearchStore
+            from ..research.evaluation import digest
+            research = ResearchStore(Config.UPLOAD_FOLDER)
+            expected_seed = TextProcessor.preprocess_text(research.seed_text(research_case_id))
+            if document_texts != [expected_seed] or additional_context or simulation_requirement != research.requirement(research_case_id):
+                raise ValueError('研究案例只能使用系统导出的早期材料，不能附加未核验文档')
+            project.research_case_id = research_case_id
+            project.research_input_hash = digest(all_text)
         project.total_text_length = len(all_text)
         ProjectManager.save_extracted_text(project.project_id, all_text)
         logger.info(f"文本提取完成，共 {len(all_text)} 字符")
@@ -359,11 +369,13 @@ def generate_ontology():
         # 生成本体
         logger.info("调用 LLM 生成本体定义...")
         generator = OntologyGenerator()
-        ontology = generator.generate(
-            document_texts=document_texts,
-            simulation_requirement=simulation_requirement,
-            additional_context=additional_context if additional_context else None
-        )
+        from ..utils.llm_runtime import scope
+        with scope(project.project_id, 'ontology'):
+            ontology = generator.generate(
+                document_texts=document_texts,
+                simulation_requirement=simulation_requirement,
+                additional_context=additional_context if additional_context else None
+            )
         
         # 保存本体到项目
         entity_count = len(ontology.get("entity_types", []))

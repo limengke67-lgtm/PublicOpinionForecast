@@ -1,21 +1,29 @@
 {
-  "name": "mirofish",
-  "version": "0.1.0",
-  "description": "MiroFish - 简洁通用的群体智能引擎，预测万物",
+  "name": "public-opinion-forecast",
+  "version": "0.2.0",
+  "description": "PublicOpinionForecast - 可验证的舆情预测、成本控制与自适应校准",
   "scripts": {
     "setup": "npm install && cd frontend && npm install",
     "setup:backend": "cd backend && uv sync",
     "setup:all": "npm run setup && npm run setup:backend",
     "dev": "concurrently --kill-others -n \"backend,frontend\" -c \"green,cyan\" \"npm run backend\" \"npm run frontend\"",
-    "backend": "cd backend && uv run python run.py",
+    "backend": "node scripts/start-backend.mjs",
+    "backend:research": "node scripts/start-backend.mjs --research-only",
+    "dev:research": "concurrently --kill-others \"npm run backend:research\" \"npm run frontend\"",
     "frontend": "cd frontend && npm run dev",
-    "build": "cd frontend && npm run build"
+    "build": "cd frontend && npm run build",
+    "doctor": "node scripts/check-project.mjs",
+    "test:backend": "node scripts/check-project.mjs --test",
+    "test:repository": "node scripts/check-project.mjs --test-repository",
+    "verify": "npm run test:backend && npm run test:repository && npm run build",
+    "serve:research": "node scripts/start-backend.mjs --research-only --serve-frontend",
+    "backup": "node scripts/check-project.mjs --backup"
   },
   "devDependencies": {
     "concurrently": "^9.2.4"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.12.0"
   },
   "license": "AGPL-3.0"
 }

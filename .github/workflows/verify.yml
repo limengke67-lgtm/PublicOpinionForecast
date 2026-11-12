@@ -1,0 +1,46 @@
+name: Verify PublicOpinionForecast
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.9.26'
+      - run: uv sync --project backend --frozen --python 3.11 --no-editable
+      - run: npm ci --no-audit --no-fund
+      - run: npm ci --prefix frontend --no-audit --no-fund
+      - run: npm run verify
+      - name: Build delivery image
+        run: docker build -t public-opinion-forecast:ci .
+      - name: Smoke test packaged application
+        run: |
+          docker run -d --name forecast-ci -p 5001:5001 public-opinion-forecast:ci
+          for i in $(seq 1 40); do
+            if curl --fail --silent http://localhost:5001/health; then break; fi
+            sleep 2
+          done
+          curl --fail http://localhost:5001/
+          curl --fail http://localhost:5001/api/research/events
+          status=$(curl --silent --output /dev/null --write-out '%{http_code}' -X POST http://localhost:5001/api/simulation/start -H 'Content-Type: application/json' -d '{}')
+          test "$status" = 403
+      - if: failure()
+        run: docker logs forecast-ci || true

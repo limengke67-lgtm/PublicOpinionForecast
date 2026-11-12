@@ -94,6 +94,15 @@ def seed_workspace(workspace, state):
     return state_path, light_path, dark_path
 
 
+def symlink_or_skip(test, path, target):
+    try:
+        path.symlink_to(target)
+    except OSError as error:
+        if os.name == 'nt' and getattr(error, 'winerror', None) == 1314:
+            test.skipTest('Windows 当前账号没有创建符号链接的权限；Linux CI 执行此检查')
+        raise
+
+
 class StarHistoryBehaviorTests(unittest.TestCase):
     def test_backfill_writes_hand_computed_completed_daily_history(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -244,7 +253,7 @@ class StarHistoryBehaviorTests(unittest.TestCase):
             workspace = Path(temporary)
             state_path = workspace / ".github/star-history/history.json"
             state_path.parent.mkdir(parents=True)
-            state_path.symlink_to(workspace / "missing-history.json")
+            symlink_or_skip(self, state_path, workspace / "missing-history.json")
 
             with self.assertRaises(star_history.StarHistoryError):
                 star_history.execute(
@@ -412,7 +421,7 @@ class StarHistoryBehaviorTests(unittest.TestCase):
                 self.assertNotIn(TOKEN_SENTINEL.encode(), output.read_bytes())
             star_history.check_workspace(workspace)
 
-    def test_count_file_rejects_symlinks_malformed_and_extreme_values(self):
+    def test_count_file_rejects_malformed_and_extreme_values(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             valid = root / "valid"
@@ -435,8 +444,13 @@ class StarHistoryBehaviorTests(unittest.TestCase):
                 ):
                     star_history.load_star_count_file(path)
 
+    def test_count_file_rejects_symlink(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            valid = root / 'valid'
+            valid.write_bytes(b'0\n')
             link = root / "link"
-            link.symlink_to(valid)
+            symlink_or_skip(self, link, valid)
             with self.assertRaises(star_history.StarHistoryError):
                 star_history.load_star_count_file(link)
 
