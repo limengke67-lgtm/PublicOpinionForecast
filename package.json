@@ -15,7 +15,8 @@
     "doctor": "node scripts/check-project.mjs",
     "test:backend": "node scripts/check-project.mjs --test",
     "test:repository": "node scripts/check-project.mjs --test-repository",
-    "verify": "npm run test:backend && npm run test:repository && npm run build",
+    "test:frontend": "npm --prefix frontend test",
+    "verify": "npm run test:backend && npm run test:repository && npm run test:frontend && npm run build",
     "serve:research": "node scripts/start-backend.mjs --research-only --serve-frontend",
     "backup": "node scripts/check-project.mjs --backup"
   },

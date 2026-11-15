@@ -4,7 +4,7 @@
     <div class="control-bar">
       <div class="status-group">
         <!-- Twitter 平台进度 -->
-        <div class="platform-status twitter" :class="{ active: runStatus.twitter_running, completed: runStatus.twitter_completed }">
+        <div v-if="platformConfig?.twitter !== false" class="platform-status twitter" :class="{ active: runStatus.twitter_running, completed: runStatus.twitter_completed }">
           <div class="platform-header">
             <svg class="platform-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
@@ -45,7 +45,7 @@
         </div>
         
         <!-- Reddit 平台进度 -->
-        <div class="platform-status reddit" :class="{ active: runStatus.reddit_running, completed: runStatus.reddit_completed }">
+        <div v-if="platformConfig?.reddit !== false" class="platform-status reddit" :class="{ active: runStatus.reddit_running, completed: runStatus.reddit_completed }">
           <div class="platform-header">
             <svg class="platform-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
@@ -110,12 +110,12 @@
         <div class="timeline-stats">
           <span class="total-count">TOTAL EVENTS: <span class="mono">{{ allActions.length }}</span></span>
           <span class="platform-breakdown">
-            <span class="breakdown-item twitter">
+            <span v-if="platformConfig?.twitter !== false" class="breakdown-item twitter">
               <svg class="mini-icon" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
               <span class="mono">{{ twitterActionsCount }}</span>
             </span>
-            <span class="breakdown-divider">/</span>
-            <span class="breakdown-item reddit">
+            <span v-if="platformConfig?.twitter !== false && platformConfig?.reddit !== false" class="breakdown-divider">/</span>
+            <span v-if="platformConfig?.reddit !== false" class="breakdown-item reddit">
               <svg class="mini-icon" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
               <span class="mono">{{ redditActionsCount }}</span>
             </span>
@@ -292,6 +292,7 @@ import { useI18n } from 'vue-i18n'
 import {
   startSimulation,
   stopSimulation,
+  getSimulation,
   getRunStatus,
   getRunStatusDetail
 } from '../api/simulation'
@@ -322,6 +323,7 @@ const isStarting = ref(false)
 const isStopping = ref(false)
 const startError = ref(null)
 const runStatus = ref({})
+const platformConfig = ref(null)
 const allActions = ref([]) // 所有动作（增量累积）
 const actionIds = ref(new Set()) // 用于去重的动作ID集合
 const scrollContainer = ref(null)
@@ -365,6 +367,18 @@ const addLog = (msg) => {
   emit('add-log', msg)
 }
 
+const loadPlatformConfig = async () => {
+  if (platformConfig.value) return platformConfig.value
+  const simulation = await getSimulation(props.simulationId)
+  if (!simulation.success || !simulation.data) {
+    throw new Error(simulation.error || '无法读取模拟平台配置')
+  }
+  const { enable_twitter: twitter, enable_reddit: reddit } = simulation.data
+  if (!twitter && !reddit) throw new Error('模拟未启用任何平台')
+  platformConfig.value = { twitter, reddit }
+  return platformConfig.value
+}
+
 // 重置所有状态（用于重新启动模拟）
 const resetAllState = () => {
   phase.value = 0
@@ -391,13 +405,18 @@ const doStartSimulation = async (force = false) => {
   
   isStarting.value = true
   startError.value = null
-  addLog(t('log.startingDualSim'))
   emit('update-status', 'processing')
   
   try {
+    // The prepared simulation may intentionally enable just one platform.
+    const { twitter, reddit } = await loadPlatformConfig()
+    const platform = twitter && reddit ? 'parallel' : (twitter ? 'twitter' : 'reddit')
+    addLog(platform === 'parallel'
+      ? t('log.startingDualSim')
+      : t('log.startingSingleSim', { platform: twitter ? 'Info Plaza' : 'Topic Community' }))
     const params = {
       simulation_id: props.simulationId,
-      platform: 'parallel',
+      platform,
       force: force === true,
       enable_graph_memory_update: true  // 开启动态图谱更新
     }
@@ -719,10 +738,16 @@ watch(() => props.systemLogs?.length, () => {
   })
 })
 
-onMounted(() => {
+onMounted(async () => {
   addLog(t('log.step3Init'))
   if (props.simulationId) {
-    resumeOrStart()
+    try {
+      await loadPlatformConfig()
+      await resumeOrStart()
+    } catch (error) {
+      startError.value = error.message
+      emit('update-status', 'error')
+    }
   }
 })
 

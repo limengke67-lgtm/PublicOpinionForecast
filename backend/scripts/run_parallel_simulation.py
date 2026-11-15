@@ -1188,10 +1188,16 @@ async def run_twitter_simulation(
             content = post.get("content", "")
             try:
                 agent = result.env.agent_graph.get_agent(agent_id)
-                initial_actions[agent] = ManualAction(
+                action = ManualAction(
                     action_type=ActionType.CREATE_POST,
                     action_args={"content": content}
                 )
+                if agent in initial_actions:
+                    if not isinstance(initial_actions[agent], list):
+                        initial_actions[agent] = [initial_actions[agent]]
+                    initial_actions[agent].append(action)
+                else:
+                    initial_actions[agent] = action
                 
                 if action_logger:
                     action_logger.log_action(
@@ -1213,6 +1219,9 @@ async def run_twitter_simulation(
     # 记录 round 0 结束
     if action_logger:
         action_logger.log_round_end(0, initial_action_count)
+    # Initial posts have already been recorded in round zero. Start reading
+    # new trace rows after them so they cannot leak into the forecast window.
+    _, last_rowid = fetch_new_actions_from_db(db_path, last_rowid, agent_names)
     
     # 主模拟循环
     time_config = config.get("time_config", {})
@@ -1250,7 +1259,7 @@ async def run_twitter_simulation(
         if not active_agents:
             # 没有活跃agent时也记录round结束（actions_count=0）
             if action_logger:
-                action_logger.log_round_end(round_num + 1, 0)
+                action_logger.log_round_end(round_num + 1, 0, (round_num + 1) * minutes_per_round / 60)
             continue
         
         actions = {agent: LLMAction() for _, agent in active_agents}
@@ -1276,7 +1285,7 @@ async def run_twitter_simulation(
                 round_action_count += 1
         
         if action_logger:
-            action_logger.log_round_end(round_num + 1, round_action_count)
+            action_logger.log_round_end(round_num + 1, round_action_count, (round_num + 1) * minutes_per_round / 60)
         
         if (round_num + 1) % 20 == 0:
             progress = (round_num + 1) / total_rounds * 100
@@ -1413,6 +1422,8 @@ async def run_reddit_simulation(
     # 记录 round 0 结束
     if action_logger:
         action_logger.log_round_end(0, initial_action_count)
+    # Initial posts belong to the seed, not the first forecast round.
+    _, last_rowid = fetch_new_actions_from_db(db_path, last_rowid, agent_names)
     
     # 主模拟循环
     time_config = config.get("time_config", {})
@@ -1450,7 +1461,7 @@ async def run_reddit_simulation(
         if not active_agents:
             # 没有活跃agent时也记录round结束（actions_count=0）
             if action_logger:
-                action_logger.log_round_end(round_num + 1, 0)
+                action_logger.log_round_end(round_num + 1, 0, (round_num + 1) * minutes_per_round / 60)
             continue
         
         actions = {agent: LLMAction() for _, agent in active_agents}
@@ -1476,7 +1487,7 @@ async def run_reddit_simulation(
                 round_action_count += 1
         
         if action_logger:
-            action_logger.log_round_end(round_num + 1, round_action_count)
+            action_logger.log_round_end(round_num + 1, round_action_count, (round_num + 1) * minutes_per_round / 60)
         
         if (round_num + 1) % 20 == 0:
             progress = (round_num + 1) / total_rounds * 100

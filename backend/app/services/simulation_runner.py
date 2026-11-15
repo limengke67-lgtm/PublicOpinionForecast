@@ -486,15 +486,14 @@ class SimulationRunner:
         else:
             cls._graph_memory_enabled[simulation_id] = False
         
-        # 确定运行哪个脚本（脚本位于 backend/scripts/ 目录）
+        # 所有平台使用同一个记录动作和结束事件的运行器。旧单平台脚本
+        # 不写 actions.jsonl，会导致进度和研究预测一直无法完成。
+        script_name = "run_parallel_simulation.py"
         if platform == "twitter":
-            script_name = "run_twitter_simulation.py"
             state.twitter_running = True
         elif platform == "reddit":
-            script_name = "run_reddit_simulation.py"
             state.reddit_running = True
         else:
-            script_name = "run_parallel_simulation.py"
             state.twitter_running = True
             state.reddit_running = True
         
@@ -543,6 +542,10 @@ class SimulationRunner:
                 script_path,
                 "--config", config_path,  # 使用完整配置文件路径
             ]
+            if platform == "twitter":
+                cmd.append("--twitter-only")
+            elif platform == "reddit":
+                cmd.append("--reddit-only")
             
             # 如果指定了最大轮数，添加到命令行参数
             if max_rounds is not None and max_rounds > 0:
@@ -934,30 +937,12 @@ class SimulationRunner:
 
     @classmethod
     def _check_all_platforms_completed(cls, state: SimulationRunState) -> bool:
-        """
-        检查所有启用的平台是否都已完成模拟
-        
-        通过检查对应的 actions.jsonl 文件是否存在来判断平台是否被启用
-        
-        Returns:
-            True 如果所有启用的平台都已完成
-        """
-        sim_dir = os.path.join(cls.RUN_STATE_DIR, state.simulation_id)
-        twitter_log = os.path.join(sim_dir, "twitter", "actions.jsonl")
-        reddit_log = os.path.join(sim_dir, "reddit", "actions.jsonl")
-        
-        # 检查哪些平台被启用（通过文件是否存在判断）
-        twitter_enabled = os.path.exists(twitter_log)
-        reddit_enabled = os.path.exists(reddit_log)
-        
-        # 如果平台被启用但未完成，则返回 False
-        if twitter_enabled and not state.twitter_completed:
-            return False
-        if reddit_enabled and not state.reddit_completed:
-            return False
-        
-        # 至少有一个平台被启用且已完成
-        return twitter_enabled or reddit_enabled
+        """Wait for every started platform, even if its log is not present yet."""
+        return (
+            not state.twitter_running
+            and not state.reddit_running
+            and (state.twitter_completed or state.reddit_completed)
+        )
     
     @classmethod
     def _terminate_process(cls, process: subprocess.Popen, simulation_id: str, timeout: int = 10):

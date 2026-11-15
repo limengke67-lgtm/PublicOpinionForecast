@@ -526,6 +526,7 @@
     "step2Init": "Step2 环境搭建初始化",
     "step3Init": "Step3 模拟运行初始化",
     "startingDualSim": "正在启动双平台并行模拟...",
+    "startingSingleSim": "正在启动 {platform} 平台模拟...",
     "setMaxRounds": "设置最大模拟轮数: {rounds}",
     "graphMemoryUpdateEnabled": "已开启动态图谱更新模式",
     "oldSimCleared": "✓ 已清理旧的模拟日志，重新开始模拟",

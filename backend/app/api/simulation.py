@@ -274,8 +274,8 @@ def _check_simulation_prepared(simulation_id: str) -> tuple:
     检查模拟是否已经准备完成
     
     检查条件：
-    1. state.json 存在且 status 为 "ready"
-    2. 必要文件存在：reddit_profiles.json, twitter_profiles.csv, simulation_config.json
+    1. state.json 显示准备工作已完成
+    2. 配置文件与所有已启用平台的人设文件存在
     
     注意：运行脚本(run_*.py)保留在 backend/scripts/ 目录，不再复制到模拟目录
     
@@ -294,13 +294,20 @@ def _check_simulation_prepared(simulation_id: str) -> tuple:
     if not os.path.exists(simulation_dir):
         return False, {"reason": "模拟目录不存在"}
     
-    # 必要文件列表（不包括脚本，脚本位于 backend/scripts/）
-    required_files = [
-        "state.json",
-        "simulation_config.json",
-        "reddit_profiles.json",
-        "twitter_profiles.csv"
-    ]
+    import json
+    state_file = os.path.join(simulation_dir, "state.json")
+    try:
+        with open(state_file, 'r', encoding='utf-8') as f:
+            state_data = json.load(f)
+    except (OSError, ValueError) as error:
+        return False, {"reason": f"读取状态文件失败: {error}"}
+
+    # 单平台模拟不会生成被禁用平台的人设文件。
+    required_files = ["state.json", "simulation_config.json"]
+    if state_data.get("enable_twitter", True):
+        required_files.append("twitter_profiles.csv")
+    if state_data.get("enable_reddit", True):
+        required_files.append("reddit_profiles.json")
     
     # 检查文件是否存在
     existing_files = []
@@ -320,12 +327,7 @@ def _check_simulation_prepared(simulation_id: str) -> tuple:
         }
     
     # 检查state.json中的状态
-    state_file = os.path.join(simulation_dir, "state.json")
     try:
-        import json
-        with open(state_file, 'r', encoding='utf-8') as f:
-            state_data = json.load(f)
-        
         status = state_data.get("status", "")
         config_generated = state_data.get("config_generated", False)
         
@@ -346,7 +348,7 @@ def _check_simulation_prepared(simulation_id: str) -> tuple:
             profiles_file = os.path.join(simulation_dir, "reddit_profiles.json")
             config_file = os.path.join(simulation_dir, "simulation_config.json")
             
-            profiles_count = 0
+            profiles_count = state_data.get("profiles_count", 0)
             if os.path.exists(profiles_file):
                 with open(profiles_file, 'r', encoding='utf-8') as f:
                     profiles_data = json.load(f)
@@ -1610,6 +1612,10 @@ def start_simulation():
                 "success": False,
                 "error": t('api.simulationNotFound', id=simulation_id)
             }), 404
+
+        if ((platform in ('twitter', 'parallel') and not getattr(state, 'enable_twitter', True)) or
+                (platform in ('reddit', 'parallel') and not getattr(state, 'enable_reddit', True))):
+            return jsonify(success=False, error='所选平台未在该模拟中启用，请选择已准备的平台'), 400
 
         force_restarted = False
         config_path = os.path.join(Config.OASIS_SIMULATION_DATA_DIR, simulation_id, 'simulation_config.json')

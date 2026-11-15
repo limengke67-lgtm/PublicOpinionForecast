@@ -205,6 +205,20 @@ def test_simulation_start_rejects_string_booleans(field):
     assert "JSON boolean" in response.get_json()["error"]
 
 
+@pytest.mark.parametrize('platform', ['reddit', 'parallel'])
+def test_start_rejects_a_platform_not_enabled_for_the_simulation(monkeypatch, platform):
+    simulation = SimpleNamespace(enable_twitter=True, enable_reddit=False)
+    monkeypatch.setattr(simulation_api, 'SimulationManager', lambda: SimpleNamespace(
+        get_simulation=lambda _simulation_id: simulation,
+    ))
+    app = Flask(__name__)
+    with app.test_request_context('/api/simulation/start', method='POST',
+                                  json={'simulation_id': 'sim-1', 'platform': platform}):
+        response, status = simulation_api.start_simulation()
+    assert status == 400
+    assert '未在该模拟中启用' in response.get_json()['error']
+
+
 def test_force_restart_does_not_continue_while_old_ingestion_is_pending(monkeypatch):
     simulation = SimpleNamespace(
         simulation_id="sim-1",
@@ -270,7 +284,12 @@ def test_force_restart_does_not_continue_while_old_ingestion_is_pending(monkeypa
     assert cleanup_called == []
 
 
-def test_monitor_start_failure_terminates_the_spawned_process(monkeypatch, tmp_path):
+@pytest.mark.parametrize(("platform", "flag"), [
+    ("twitter", "--twitter-only"),
+    ("reddit", "--reddit-only"),
+    ("parallel", None),
+])
+def test_monitor_start_failure_terminates_the_spawned_process(monkeypatch, tmp_path, platform, flag):
     simulation_id = "sim-start-failure"
     sim_dir = tmp_path / "runs" / simulation_id
     scripts_dir = tmp_path / "scripts"
@@ -285,7 +304,7 @@ def test_monitor_start_failure_terminates_the_spawned_process(monkeypatch, tmp_p
         }),
         encoding="utf-8",
     )
-    (scripts_dir / "run_twitter_simulation.py").write_text("pass\n", encoding="utf-8")
+    (scripts_dir / "run_parallel_simulation.py").write_text("pass\n", encoding="utf-8")
 
     class Process:
         pid = 123
@@ -301,9 +320,13 @@ def test_monitor_start_failure_terminates_the_spawned_process(monkeypatch, tmp_p
             raise RuntimeError("monitor failed")
 
     terminated = []
+    commands = []
     monkeypatch.setattr(SimulationRunner, "RUN_STATE_DIR", str(tmp_path / "runs"))
     monkeypatch.setattr(SimulationRunner, "SCRIPTS_DIR", str(scripts_dir))
-    monkeypatch.setattr(runner_module.subprocess, "Popen", lambda *_args, **_kwargs: Process())
+    def start_process(command, **_kwargs):
+        commands.append(command)
+        return Process()
+    monkeypatch.setattr(runner_module.subprocess, "Popen", start_process)
     monkeypatch.setattr(runner_module.threading, "Thread", BrokenThread)
     monkeypatch.setattr(
         SimulationRunner,
@@ -320,10 +343,14 @@ def test_monitor_start_failure_terminates_the_spawned_process(monkeypatch, tmp_p
         with pytest.raises(RuntimeError, match="monitor failed"):
             SimulationRunner.start_simulation(
                 simulation_id,
-                platform="twitter",
+                platform=platform,
                 enable_graph_memory_update=False,
             )
         assert terminated == [simulation_id]
+        assert len(commands) == 1
+        assert commands[0][1].endswith("run_parallel_simulation.py")
+        assert ("--twitter-only" in commands[0]) == (flag == "--twitter-only")
+        assert ("--reddit-only" in commands[0]) == (flag == "--reddit-only")
         assert simulation_id not in SimulationRunner._processes
         assert simulation_id not in SimulationRunner._action_queues
         assert simulation_id not in SimulationRunner._stdout_files
@@ -334,6 +361,17 @@ def test_monitor_start_failure_terminates_the_spawned_process(monkeypatch, tmp_p
         SimulationRunner._stdout_files.pop(simulation_id, None)
         SimulationRunner._stderr_files.pop(simulation_id, None)
         SimulationRunner._graph_memory_enabled.pop(simulation_id, None)
+
+
+def test_completion_waits_for_other_started_platform_before_its_log_exists():
+    state = SimulationRunState(
+        "sim-two-platforms", runner_status=RunnerStatus.RUNNING,
+        twitter_completed=True, twitter_running=False, reddit_running=True,
+    )
+    assert not SimulationRunner._check_all_platforms_completed(state)
+    state.reddit_running = False
+    state.reddit_completed = True
+    assert SimulationRunner._check_all_platforms_completed(state)
 
 
 def test_shutdown_terminates_producer_before_tail_read_and_updater_drain(

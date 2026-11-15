@@ -647,7 +647,7 @@ SECTION_SYSTEM_PROMPT_TEMPLATE = """\
    - 你正在以「上帝视角」观察未来的预演
    - 所有内容必须来自模拟世界中发生的事件和Agent言行
    - 禁止使用你自己的知识来编写报告内容
-   - 每个章节至少调用3次工具（最多5次）来观察模拟的世界，它代表了未来
+   - 每个章节至少调用{min_tool_calls}次工具（最多{max_tool_calls}次）来观察模拟的世界，它代表了未来
 
 2. 【必须引用Agent的原始言行】
    - Agent的发言和行为是对未来人群行为的预测
@@ -911,6 +911,9 @@ class ReportAgent:
         self.graph_id = graph_id
         self.simulation_id = simulation_id
         self.simulation_requirement = simulation_requirement
+        # Respect the configured per-section tool limit. This is not a global
+        # SDK request budget: tools may themselves make additional LLM calls.
+        self.MAX_TOOL_CALLS_PER_SECTION = max(1, Config.REPORT_AGENT_MAX_TOOL_CALLS)
         
         self.llm = llm_client or LLMClient()
         self.zep_tools = zep_tools or ZepToolsService()
@@ -1298,12 +1301,15 @@ class ReportAgent:
         if self.report_logger:
             self.report_logger.log_section_start(section.title, section_index)
         
+        min_tool_calls = min(3, self.MAX_TOOL_CALLS_PER_SECTION)
         system_prompt = SECTION_SYSTEM_PROMPT_TEMPLATE.format(
             report_title=outline.title,
             report_summary=outline.summary,
             simulation_requirement=self.simulation_requirement,
             section_title=section.title,
             tools_description=self._get_tools_description(),
+            min_tool_calls=min_tool_calls,
+            max_tool_calls=self.MAX_TOOL_CALLS_PER_SECTION,
         )
         system_prompt = f"{system_prompt}\n\n{get_language_instruction()}"
 
@@ -1331,7 +1337,6 @@ class ReportAgent:
         # ReACT循环
         tool_calls_count = 0
         max_iterations = 5  # 最大迭代轮数
-        min_tool_calls = 3  # 最少工具调用次数
         conflict_retries = 0  # 工具调用与Final Answer同时出现的连续冲突次数
         used_tools = set()  # 记录已调用过的工具名
         all_tools = {"insight_forge", "panorama_search", "quick_search", "interview_agents"}
